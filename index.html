@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>JavaScript Tetris | Jerry Hall</title>
+
+</head>
+
+<body>
+
+  <style>
+    #container       { padding: 15px; margin: 0 auto 100px; max-width: 500px; display: block; text-align: center; background-color: #ededed }
+    #main            { background-color: #E0E0E0; }
+    #secondary       { vertical-align: top; background-color: #E0E0E0;}
+    #score           { background-color: #E0E0E0; }
+    .left            { float:left; width: 30%}
+    .right           { width: 95% }
+  </style>
+
+
+  <h1 style="text-align:center">Tetris</h1>
+  <div id="container">
+    <div class="left">
+      <br>Next Blocks:
+      <br>
+      <canvas id="secondary" width="0" height="0"></canvas>
+      <br><br><br><br><br><br><br>Score:<br>
+      <canvas id="score" width="0" height="0"></canvas>
+    </div>
+
+    <div class="right">
+      <canvas id="main" width="0" height="0"></canvas>
+      <p id="play">Press space to play.</p>
+    </div>
+  </div>
+
+
+  <script src="tetrominoes.js" charset="utf-8"></script>
+
+  <script>
+
+    //-------------------------------------------------------------------------
+    // game constants & variables
+    //-------------------------------------------------------------------------
+    var   r               = 1.2,       // size ratio
+          SQ              = 20*r,      // block size
+          ux              = 12*SQ,     // horizontal court size in pixels
+          uy              = 20*SQ,     // vertical court size in pixels
+          scoreGrid       = 4*SQ,      // grid size for scoreboard
+          posX            = 0,         // initial horizontal position
+          posY            = 0,         // initial vertical position
+          piecePool       = [],        // pool of tetromino pieces to randomly pick from
+          index           = 0,         // index of tetromino set
+          dropint         = 800,      // interval between each drop in milliseconds
+          gameboard       = [],        // gameboard array
+          score           = 0,         // score
+          then,                        // time placeholder
+          now,                         // time placeholder
+          nextPieces,                  // next set of pieces in queue
+          currentPiece,                // current live piece
+          playing         = false;     //
+
+    const KEY         = { ESC: 27, SPACE: 32, LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40 };
+    const ctx         = document.getElementById("main").getContext("2d");
+    const secondCtx   = document.getElementById("secondary").getContext("2d");
+    const scoreCtx    = document.getElementById("score").getContext("2d");
+    const i           = { blocks: I, color: 'grey'   };
+    const j           = { blocks: J, color: 'blue'   };
+    const l           = { blocks: L, color: 'orange' };
+    const o           = { blocks: O, color: 'yellow' };
+    const s           = { blocks: S, color: 'green'  };
+    const t           = { blocks: T, color: 'purple' };
+    const z           = { blocks: Z, color: 'red'    };
+
+
+    //-------------------------------------------------------------------------
+    // game load functions
+    //-------------------------------------------------------------------------
+    function random(min, max)            {
+                                            return (min + (Math.random() * (max - min)));
+                                          }
+    function resetBoard()                {
+                                            ctx.clearRect(0, 0, ux, uy);
+                                            scoreCtx.clearRect(SQ, SQ, scoreGrid, scoreGrid);
+                                            piecePool = [];
+                                            initGameboard();
+                                          }
+    function clearStartText()            {
+                                            document.getElementById("play").style.visibility = "hidden";
+                                          }
+    function setBoard(col, row, value)   {  // assigns value of 1-occupied or 0-unoccupied to gameboard array
+                                            gameboard[row][col] = value;
+                                          }
+    function addScore()                  {
+                                            score+=10;
+                                            scoreCtx.clearRect(SQ, SQ, scoreGrid, scoreGrid);
+                                            scoreCtx.fillText(score, SQ, 2*SQ);
+                                            if (dropint>200)
+                                            dropint-=50;
+                                          }
+    function loadCanvas()                {
+                                            document.getElementById("main").width = ux;
+                                            document.getElementById("main").height = uy;
+                                            document.getElementById('secondary').width = scoreGrid;
+                                            document.getElementById('secondary').height = scoreGrid;
+                                            document.getElementById('score').width = scoreGrid;
+                                            document.getElementById('score').height = scoreGrid;
+                                            ctx.strokeStyle = secondCtx.strokeStyle = "#E0E0E0";
+                                            scoreCtx.font = "30px Arial";
+                                          }
+    function initGameboard()             {  // sets up the gameboard
+                                            for (row = 0; row < uy/SQ; row++) {
+                                              gameboard[row] = [];
+                                              for (col = 0; col < ux/SQ; col++)
+                                              setBoard(col, row, 0);
+                                            }
+                                          }
+
+    window.onload = loadCanvas();
+
+    //-------------------------------------------------------------------------
+    // tetromino piece prototype functions
+    //-------------------------------------------------------------------------
+    function Piece(pieces, color) {
+      this.pieces = pieces;
+      this.color = color;
+      this.index = 0;
+      this.piece = this.pieces[this.index];
+    }
+    Piece.prototype.draw = function() {
+      ctx.fillStyle = this.color;
+      for (row = 0; row < this.piece.length; row++) {
+        for (var col = 0; col < this.piece[row].length; col++) {
+          if (this.piece[row][col] == 1) {
+            ctx.fillRect(col*SQ + posX, row*SQ + posY, SQ, SQ);
+            ctx.strokeRect(col*SQ + posX, row*SQ + posY, SQ, SQ);
+            setBoard(col + posX/SQ, row + posY/SQ, 1);
+          }
+        }
+      }
+    }
+    Piece.prototype.undraw = function() {
+      for (row = 0; row < this.piece.length; row++) {
+        for (var col = 0; col < this.piece[row].length; col++) {
+          if (this.piece[row][col] == 1) {
+            ctx.clearRect(col*SQ + posX, row*SQ + posY, SQ, SQ);
+            setBoard(col + posX/SQ, row + posY/SQ, 0);
+          }
+        }
+      }
+    }
+    Piece.prototype.moveDown = function() {
+      if (checkCollision("down")) {
+        reduceBlocks();
+      }
+      else {
+        this.undraw();
+        posY+=SQ;
+        this.draw();
+      }
+    }
+    Piece.prototype.moveLeft = function() {
+      if (checkCollision("left"))
+        null;
+      else {
+        this.undraw();
+        posX-=SQ;
+        this.draw();
+      }
+    }
+    Piece.prototype.moveRight = function() {
+      if (checkCollision("right"))
+        null;
+      else {
+        this.undraw();
+        posX+=SQ;
+        this.draw();
+      }
+    }
+    Piece.prototype.rotate = function() {
+      this.undraw();
+      var nextIndex = currentPiece.index + 1;
+      if (nextIndex == 4)
+        nextIndex = 0;
+      if (leftCollision(currentPiece.pieces[nextIndex], 1) || rightCollision(currentPiece.pieces[nextIndex], 1))
+        this.draw();
+      else {
+        if (this.index == 3)
+          this.index = -1;
+        this.index++;
+        this.piece = this.pieces[this.index];
+        this.draw();
+      }
+    }
+    function checkCollision(dir) {
+      switch (dir) {
+        case "left"  :    return leftCollision(currentPiece.piece, 0);     break;
+        case "right" :    return rightCollision(currentPiece.piece, 0);    break;
+        case "down"  :    return bottomCollision(currentPiece.piece);   break;
+      }
+    }
+    //-------------------------------------------------------------------------
+    // Checks for left-hand collision with wall or block.
+    // Logic: check only the left-most column of each row for a collision.
+    //-------------------------------------------------------------------------
+    function leftCollision(piece, rotation) {
+      var collision = false;
+      for (row = 0; row < piece.length; row++) {
+        for (col = 0; col < piece[row].length; col++) {
+          if (piece[row][col] == 1) {
+            /* Left collision check statement */
+            if (gameboard[posY/SQ + row][posX/SQ + col - 1 + rotation] == 1 || posX/SQ + col - 1 + rotation < 0 )
+              collision = true;
+            break;
+          }
+        }
+      }
+      return collision;
+    }
+    //-------------------------------------------------------------------------
+    // Checks for right-hand collision with wall or block.
+    // Logic: check only the right-most column of each row for a collision.
+    //-------------------------------------------------------------------------
+    function rightCollision(piece, rotation) {
+      var collision = false;
+      for (row = 0; row < piece.length; row++) {
+        for (col = piece[row].length; col >= 0; col--) {
+          if (piece[row][col] == 1) {
+            /* Right collision check statement */
+            if (gameboard[posY/SQ + row][posX/SQ + col + 1 - rotation] == 1 || posX/SQ + col + 1 - rotation >= ux/SQ )
+              collision = true;
+            break;
+          }
+        }
+      }
+      return collision;
+    }
+    //-------------------------------------------------------------------------
+    // Checks for bottom collision with floor or block.
+    // Logic: check only the bottom-most row of each column for a collision.
+    //-------------------------------------------------------------------------
+    function bottomCollision(piece) {
+      var collision = false;
+      for (col = 0; col < piece[0].length; col++) {
+        for (row = piece.length-1; row >= 0; row--) {
+          if (piece[row][col] == 1) {
+            /* Bottom collision check statement */
+            if (posY/SQ + row + 1 >= uy/SQ || gameboard[posY/SQ + row + 1][posX/SQ + col] == 1 )
+              collision = true;
+            break;
+          }
+        }
+      }
+      return collision;
+    }
+
+    function nextPiece() {
+      checkGameOver();
+      if (playing)
+        startDrop();
+    }
+
+    // This function begins the drop sequence
+    function startDrop() {
+      currentPiece = new Piece(nextPieces.pieces, nextPieces.color);
+      posX = ux/2 - SQ * Math.round(currentPiece.piece[0].length/2);
+      posY = 0;
+      currentPiece.draw();
+      drawNextPiece();
+
+      if (!playing) {
+        then = Date.now();
+        playing = true;
+        requestAnimationFrame(drop);
+      }
+    }
+
+    // This function will drop the tetromino piece at the interval 'dropint'
+    function drop() {
+      let now = Date.now();
+      if ((now - then) > dropint) {
+        currentPiece.moveDown();
+        then = now;
+      }
+      if (playing)
+        requestAnimationFrame(drop);
+    }
+
+    function checkGameOver() {
+      for (var col = 0; col < gameboard[1].length; col++) {
+        if (gameboard[1][col] == 1) {
+          lose();
+          break;
+        }
+      }
+    }
+
+    function drawNextPiece() {
+      nextPieces = randomPiece();
+      secondCtx.clearRect(0, 0, secondary.width, secondary.height)
+      secondCtx.fillStyle = nextPieces.color;
+      for (row = 0; row < nextPieces.pieces[0].length; row++) {
+        for (var col = 0; col < nextPieces.pieces[0][row].length; col++) {
+          if (nextPieces.pieces[0][row][col] == 1) {
+            secondCtx.fillRect(col*SQ, SQ + row*SQ, SQ, SQ);
+            secondCtx.strokeRect(col*SQ, SQ + row*SQ, SQ, SQ);
+          }
+        }
+      }
+    }
+
+    function lose() {
+      playing = false;
+      document.getElementById('play').innerHTML = "Press space to play again.";
+      document.getElementById('play').style.visibility = "visible";
+    }
+
+    function reduceBlocks() {
+      var i     = gameboard.length,
+          row   = 0;
+      while (row < i) {
+        if (isFull(gameboard[row])) {
+          shiftDown(row);
+          addScore();
+        }
+        row++;
+      }
+      nextPiece();
+    }
+
+    function isFull(each_row) {
+      for (var i = 0; i < each_row.length; i++) {
+        if (each_row[i] != 1) {
+          return false;
+          break;
+        }
+      }
+      return true;
+    }
+
+    function shiftDown(end_row) {
+      var array = [];
+      while (array.length < gameboard[end_row].length)
+        array.push(0);
+      gameboard.splice(end_row, 1);
+      gameboard.splice(0, 0, array);
+
+      var ctxCopy = ctx.getImageData(0, 0, ctx.canvas.width, end_row*SQ)
+      ctx.putImageData(ctxCopy, 0, SQ);
+    }
+
+    function randomPiece() {
+      if (piecePool.length == 0)
+        piecePool = [i,i,i,i,j,j,j,j,l,l,l,l,o,o,o,o,s,s,s,s,t,t,t,t,z,z,z,z];
+      var pieceType = piecePool.splice(Math.round(random(0, piecePool.length-1)), 1)[0]
+      return { pieces:pieceType.blocks, color:pieceType.color };
+    }
+
+    function startGame() {
+      resetBoard();
+      clearStartText();
+      nextPieces = randomPiece();
+      score = 0;
+      startDrop();
+    }
+
+    document.addEventListener('keydown', keydown);
+
+    function keydown(event) {
+      if (playing) {
+        switch(event.keyCode) {
+          case KEY.LEFT:     currentPiece.moveLeft();    break;
+          case KEY.RIGHT:    currentPiece.moveRight();   break;
+          case KEY.DOWN:     currentPiece.moveDown();    break;
+          case KEY.UP:       currentPiece.rotate();      break;
+          case KEY.ESC:      lose();                     break;
+        }
+        event.preventDefault();      // prevent arrow keys from scrolling the page (supported in IE9+ and all other browsers)
+
+      } else if (!playing && event.keyCode == KEY.SPACE) {
+        event.preventDefault();      // prevent arrow keys from scrolling the page (supported in IE9+ and all other browsers)
+        startGame();
+      }
+    }
+
+  </script>
+</body>
+</html>
