@@ -207,7 +207,7 @@
       for (row = 0; row < piece.length; row++) {
         for (col = 0; col < piece[row].length; col++) {
           if (piece[row][col] == 1) {
-            /* Left collision check statement */
+            // Left collision check statement
             if (gameboard[posY/SQ + row][posX/SQ + col - 1 + rotation] == 1 || posX/SQ + col - 1 + rotation < 0 )
               collision = true;
             break;
@@ -225,7 +225,7 @@
       for (row = 0; row < piece.length; row++) {
         for (col = piece[row].length; col >= 0; col--) {
           if (piece[row][col] == 1) {
-            /* Right collision check statement */
+            // Right collision check statement 
             if (gameboard[posY/SQ + row][posX/SQ + col + 1 - rotation] == 1 || posX/SQ + col + 1 - rotation >= ux/SQ )
               collision = true;
             break;
@@ -243,7 +243,7 @@
       for (col = 0; col < piece[0].length; col++) {
         for (row = piece.length-1; row >= 0; row--) {
           if (piece[row][col] == 1) {
-            /* Bottom collision check statement */
+            // Bottom collision check statement 
             if (posY/SQ + row + 1 >= uy/SQ || gameboard[posY/SQ + row + 1][posX/SQ + col] == 1 )
               collision = true;
             break;
